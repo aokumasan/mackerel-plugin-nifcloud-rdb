@@ -3,6 +3,7 @@ package mpnifcloudrdb
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -54,6 +55,21 @@ func getLastPoint(client *RdbClient, identifier, metricName string) (float64, er
 	return latestVal, nil
 }
 
+func getEndpointFromRegion(region string) (string, error) {
+	var endpoints = map[string]string{
+		"east-1": "https://rdb.jp-east-1.api.cloud.nifty.com/",
+		"east-2": "https://rdb.jp-east-2.api.cloud.nifty.com/",
+		"east-3": "https://rdb.jp-east-3.api.cloud.nifty.com/",
+		"east-4": "https://rdb.jp-east-4.api.cloud.nifty.com/",
+		"west-1": "https://rdb.jp-west-1.api.cloud.nifty.com/",
+	}
+	v, ok := endpoints[region]
+	if !ok {
+		return "", fmt.Errorf("An invalid region was specified")
+	}
+	return v, nil
+}
+
 func (p RDBPlugin) rdbMetrics() (metrics []string) {
 	for _, v := range p.GraphDefinition() {
 		for _, vv := range v.Metrics {
@@ -65,7 +81,10 @@ func (p RDBPlugin) rdbMetrics() (metrics []string) {
 
 // FetchMetrics interface for mackerel-plugin
 func (p RDBPlugin) FetchMetrics() (map[string]float64, error) {
-	endpoint := "https://rdb.jp-east-1.api.cloud.nifty.com/"
+	endpoint, err := getEndpointFromRegion(p.Region)
+	if err != nil {
+		return nil, err
+	}
 	client := NewRdbClient(endpoint, p.AccessKeyID, p.SecretAccessKey)
 
 	stat := make(map[string]float64)

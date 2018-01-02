@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	mp "github.com/mackerelio/go-mackerel-plugin"
@@ -88,14 +89,22 @@ func (p RDBPlugin) FetchMetrics() (map[string]float64, error) {
 	client := NewRdbClient(endpoint, p.AccessKeyID, p.SecretAccessKey)
 
 	stat := make(map[string]float64)
+	var wg sync.WaitGroup
 	for _, met := range p.rdbMetrics() {
-		v, err := getLastPoint(client, p.Identifier, met)
-		if err == nil {
-			stat[met] = v
-		} else {
-			log.Printf("%s: %s", met, err)
-		}
+		wg.Add(1)
+		go func(met string) {
+			defer wg.Done()
+			fmt.Println(met)
+			v, err := getLastPoint(client, p.Identifier, met)
+			if err == nil {
+				stat[met] = v
+			} else {
+				log.Printf("%s: %s", met, err)
+			}
+		}(met)
 	}
+	wg.Wait()
+
 	return stat, nil
 }
 

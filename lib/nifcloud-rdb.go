@@ -38,20 +38,24 @@ func getLastPoint(client *RdbClient, identifier, metricName string) (float64, er
 		return 0, err
 	}
 
-	datapoints := response.NiftyGetMetricStatisticsResult.Datapoints[0].Member
+	datapoints := response.NiftyGetMetricStatisticsResult.Datapoints
 	if len(datapoints) == 0 {
+		return 0, errors.New("fetched no datapoints")
+	}
+	members := datapoints[0].Member
+	if len(members) == 0 {
 		return 0, errors.New("fetched no datapoints")
 	}
 
 	latest := new(time.Time)
 	var latestVal float64
-	for _, dp := range datapoints {
-		if dp.Timestamp.Before(*latest) {
+	for _, m := range members {
+		if m.Timestamp.Before(*latest) {
 			continue
 		}
 
-		latest = &dp.Timestamp
-		latestVal = float64(dp.Sum) / float64(dp.SampleCount)
+		latest = &m.Timestamp
+		latestVal = float64(m.Sum) / float64(m.SampleCount)
 	}
 	return latestVal, nil
 }

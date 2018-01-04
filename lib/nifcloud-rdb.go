@@ -94,7 +94,6 @@ func (p RDBPlugin) FetchMetrics() (map[string]float64, error) {
 		wg.Add(1)
 		go func(met string) {
 			defer wg.Done()
-			fmt.Println(met)
 			v, err := getLastPoint(client, p.Identifier, met)
 			if err == nil {
 				stat[met] = v

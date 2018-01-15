@@ -1,16 +1,17 @@
-# mackerel-plugin-nifcloud-rdb
+mackerel-plugin-nifcloud-rdb
+================================
 
 NIFCLOUD RDB custom metrics plugin for mackerel.io agent.
 
 
-# Usage
+## Usage
 
 ```
 mackerel-plugin-nifcloud-rdb -identifier=<db-instance-identifier> -access-key-id=<id> secret-access-key=<key> -region=<east-1 or east-2 or east-3 or east-4 or west-1> [-tempfile=<tempfile>] [-metric-key-prefix=<prefix>] [-metric-label-prefix=<label-prefix>]"
 ```
 
 
-# Example of mackerel-agent.conf
+## Example of mackerel-agent.conf
 
 ```
 [plugin.metrics.rdb]

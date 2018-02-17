@@ -1,29 +1,26 @@
 package mpnifcloudrdb
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/xml"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 	"time"
+
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/signer/v4"
 )
 
-const apiVersion = "2013-05-15N2013-12-16"
+const (
+	apiVersion = "2013-05-15N2013-12-16"
+	service    = "rdb"
+)
 
 // RdbClient ...
 type RdbClient struct {
-	Endpoint        string
-	AccessKeyID     string
-	SecretAccessKey string
-}
-
-// Auth ...
-type Auth struct {
+	Region          string
 	AccessKeyID     string
 	SecretAccessKey string
 }
@@ -58,79 +55,25 @@ type Member struct {
 	SampleCount     int
 }
 
-var unreserved = make([]bool, 128)
-var hex = "0123456789ABCDEF"
-var b64 = base64.StdEncoding
-
-func init() {
-	// RFC3986
-	u := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234567890-_.~"
-	for _, c := range u {
-		unreserved[c] = true
+func getEndpointFromRegion(region string) (string, error) {
+	var endpoints = map[string]string{
+		"east-1": "https://rdb.jp-east-1.api.cloud.nifty.com/",
+		"east-2": "https://rdb.jp-east-2.api.cloud.nifty.com/",
+		"east-3": "https://rdb.jp-east-3.api.cloud.nifty.com/",
+		"east-4": "https://rdb.jp-east-4.api.cloud.nifty.com/",
+		"west-1": "https://rdb.jp-west-1.api.cloud.nifty.com/",
 	}
-}
-
-func encode(s string) string {
-	encode := false
-	for i := 0; i != len(s); i++ {
-		c := s[i]
-		if c > 127 || !unreserved[c] {
-			encode = true
-			break
-		}
+	v, ok := endpoints[region]
+	if !ok {
+		return "", fmt.Errorf("An invalid region was specified")
 	}
-	if !encode {
-		return s
-	}
-	e := make([]byte, len(s)*3)
-	ei := 0
-	for i := 0; i != len(s); i++ {
-		c := s[i]
-		if c > 127 || !unreserved[c] {
-			e[ei] = '%'
-			e[ei+1] = hex[c>>4]
-			e[ei+2] = hex[c&0xF]
-			ei += 3
-		} else {
-			e[ei] = c
-			ei++
-		}
-	}
-	return string(e[:ei])
-}
-
-func sign(auth Auth, method, path string, params map[string]string, host string) {
-	params["AccessKeyId"] = auth.AccessKeyID
-	params["SignatureVersion"] = "2"
-	params["SignatureMethod"] = "HmacSHA256"
-
-	var sarray []string
-	for k, v := range params {
-		sarray = append(sarray, encode(k)+"="+encode(v))
-	}
-	sort.StringSlice(sarray).Sort()
-	joined := strings.Join(sarray, "&")
-	payload := method + "\n" + host + "\n" + path + "\n" + joined
-	hash := hmac.New(sha256.New, []byte(auth.SecretAccessKey))
-	hash.Write([]byte(payload))
-	signature := make([]byte, b64.EncodedLen(hash.Size()))
-	b64.Encode(signature, hash.Sum(nil))
-
-	params["Signature"] = string(signature)
-}
-
-func multimap(p map[string]string) url.Values {
-	q := make(url.Values, len(p))
-	for k, v := range p {
-		q[k] = []string{v}
-	}
-	return q
+	return v, nil
 }
 
 // NewRdbClient ...
-func NewRdbClient(endpoint, accessKeyID, secretAccessKey string) *RdbClient {
+func NewRdbClient(region, accessKeyID, secretAccessKey string) *RdbClient {
 	return &RdbClient{
-		Endpoint:        endpoint,
+		Region:          region,
 		AccessKeyID:     accessKeyID,
 		SecretAccessKey: secretAccessKey,
 	}
@@ -138,21 +81,29 @@ func NewRdbClient(endpoint, accessKeyID, secretAccessKey string) *RdbClient {
 
 // Request ...
 func (c *RdbClient) Request(action string, params map[string]string) ([]byte, error) {
-	params["Action"] = action
-	params["Version"] = apiVersion
-	params["Timestamp"] = time.Now().In(time.UTC).Format(time.RFC3339)
-
-	var auth Auth
-	if c.AccessKeyID != "" && c.SecretAccessKey != "" {
-		auth = Auth{
-			AccessKeyID:     c.AccessKeyID,
-			SecretAccessKey: c.SecretAccessKey,
-		}
+	values := url.Values{}
+	values.Set("Action", action)
+	for k, v := range params {
+		values.Set(k, v)
 	}
-	endpoint, _ := url.Parse(c.Endpoint)
-	sign(auth, "GET", "/", params, endpoint.Host)
-	endpoint.RawQuery = multimap(params).Encode()
-	resp, err := http.Get(endpoint.String())
+	body := strings.NewReader(values.Encode())
+	endpoint, err := getEndpointFromRegion(c.Region)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest("POST", endpoint, body)
+	if err != nil {
+		return nil, err
+	}
+	signer := v4.NewSigner(
+		credentials.NewStaticCredentials(c.AccessKeyID, c.SecretAccessKey, ""),
+	)
+	_, err = signer.Sign(req, body, service, c.Region, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

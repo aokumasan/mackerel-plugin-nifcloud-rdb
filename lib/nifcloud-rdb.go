@@ -43,7 +43,7 @@ func getLastPoint(client *RdbClient, identifier, metricName string) (float64, er
 	}
 	members := datapoints[0].Member
 	if len(members) == 0 {
-		return 0, errors.New("fetched no datapoints")
+		return 0, errors.New("fetched no members")
 	}
 
 	latest := new(time.Time)
